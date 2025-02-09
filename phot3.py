@@ -17,6 +17,11 @@ from astropy.stats import sigma_clipped_stats
 from astropy.table.table import QTable
 from IPython.display import clear_output
 
+import warnings
+from astropy.wcs import FITSFixedWarning
+
+warnings.filterwarnings("ignore", category=FITSFixedWarning)
+
 #Definir Directorios
 Carpeta_imagenes="imagenes"
 Archivo_catalogo="datos_gaia3edr.csv"
@@ -115,11 +120,13 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
                 return
             
     NewListO.close()
+    """
     if object_counter !=0: 
         print(f"\nSe encontraron coincidencias para el Target: {target1}")
         print(fits_path)
         print(f'Hay coincidencia de {object_counter} objetos con el catálogo \n')
-
+    """
+    
     if object_counter == 0:
         return None
 
@@ -152,6 +159,7 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
                 ID[i] = ID[i] + str(m)
 
     np.set_printoptions(suppress=True, formatter={'float_kind':'{:f}'.format})
+    """
     if object_counter !=0: 
         print(f"\nSu catalogo reducido cuenta con {len(Final_List)} filas:\n ")
         print("----RA---- ---DEC--- -----x-----  -----y----- -----ID-------\n")
@@ -160,6 +168,7 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
         print(Final_List[len(Final_List)-1], ID[len(Final_List)-1])
         print("---------- --------- ------------  ----------- -------------\n")
 
+    """
     _, _, x_init, y_init = zip(*Final_List)
     x, y = centroid_sources(image, x_init, y_init, box_size=center_box_size, centroid_func=centroid_com)
     X, Y = np.array(x), np.array(y)
@@ -188,7 +197,7 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
     bkg_mean = phot_table['aperture_sum_1'] / annulus_aperture.area
     area_aper = np.array(aperture.area_overlap(image))
     bkg_sum = bkg_mean * area_aper
-    print("==============================================================\n")
+    #print("==============================================================\n")
   
     # Flujo final para cada objeto
     final_sum = phot_table['aperture_sum_0'] - bkg_sum
@@ -229,7 +238,7 @@ for k in range(len(archivos)):
     photom = Photometry_Data_Table(fits_name, fits_path, catalogo, r=r, r_in=r_in, r_out=r_out, center_box_size=center_box_size)
     if photom is not None:
         all_tables.append(photom)
-print(f'Se obtuvieron {len(all_tables)} archivos .csv')
+print(f'\n \n Se obtuvieron {len(all_tables)} archivos .csv')
 
 # Crea lista con los nombres de los objetos a los cuales se enfoca el telescopio
 focus_object = []             
@@ -294,6 +303,7 @@ for foc in filtro_final.keys():
     final_obs_table.write(f'{final_dir}DATAOUT_{foc}.csv', overwrite=True)    
 
 
+
 def move_fits_out():
     """
     Mueve todos los archivos .fits.out al directorio "fits_out".
@@ -302,7 +312,6 @@ def move_fits_out():
     dest_dir_out = "./fits_out"
     dest_dir_csv = "./csv_out"
 
-    print("Moviendo las tablas fits.out...")
     for root, dirs, files in os.walk("./"):
         for file in files:
             if file.endswith(".fits.out"):
@@ -319,5 +328,6 @@ def move_fits_out():
                 except Exception as e:
                     print(f"Error al mover el archivo {file}: {e}")
     print("Archivos .out almacenados en fits_out")
+    print("Archivos .csv almacenados en csv_out")
 
 move_fits_out()
