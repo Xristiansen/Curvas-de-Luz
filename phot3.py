@@ -30,7 +30,8 @@ Archivo_catalogo="datos_gaia3edr.csv"
 # Configuracion de rutas a los directorios 
 carpeta = os.path.join(os.getcwd(), Carpeta_imagenes)
 carpeta = os.path.join(carpeta, '')
-archivo_catalogo = os.path.join(os.getcwd(), Archivo_catalogo) 
+archivo_catalogo = os.path.join(os.getcwd(), Archivo_catalogo)
+os.makedirs("./fits_out", exist_ok=True)
 final_dir = os.path.join(os.getcwd(), "fits_out")
 final_dir = os.path.join(final_dir, '')
 
