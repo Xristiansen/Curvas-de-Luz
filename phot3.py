@@ -32,9 +32,10 @@ carpeta = os.path.join(os.getcwd(), Carpeta_imagenes)
 carpeta = os.path.join(carpeta, '')
 archivo_catalogo = os.path.join(os.getcwd(), Archivo_catalogo)
 os.makedirs("./fits_out", exist_ok=True)
-final_dir = os.path.join(os.getcwd(), "fits_out")
+final_dir = os.path.join(os.getcwd(), "csv_out")
 final_dir = os.path.join(final_dir, '')
-
+final_out = os.path.join(os.getcwd(), "fits_out")
+final_out = os.path.join(final_out, '')
 #Definción de cosas
 center_box_size = 3
 # Definición de parámetros fotométricos #
@@ -50,12 +51,12 @@ for j in archivos:
         nombres.append(j.replace(carpeta,''))
 if nombres != []:
     l = len(nombres)
-    print(f'\nSu carpeta contiene {l} archivos .fits \n')
+    print(f'\nSu carpeta contiene {l} archivos .fits\n')
     print(f'No. 1: {nombres[0]}')
     print(f'          ....            ')
     print(f'No. {l}: {nombres[l-1]}')
 else: 
-    print('\n Su carpeta no tiene archivos .fits \n')
+    print('\nSu carpeta no tiene archivos .fits')
 
 # Carga del catálogo con coordenadas e identificador :  RA DEC ID
 catalogo = open(archivo_catalogo,"r")
@@ -107,7 +108,8 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
       
         return (ra < ra_max) & (ra > ra_min) & (dec < dec_max) & (dec > dec_min)
 
-    NewListO = open(f"Objectlist_{fits_name}.out", "w")
+    ruta_salida = os.path.join(final_out, f"Objectlist_{fits_name}.out")
+    NewListO = open(ruta_salida, "w")
     object_counter = 0
     for j in range(0, len(catalogo)):
         condicion = is_in_pic(w, image, catalogo[j][0], catalogo[j][1])
@@ -123,16 +125,16 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
     NewListO.close()
     """
     if object_counter !=0: 
-        print(f"\nSe encontraron coincidencias para el Target: {target1}")
+        print(f"Se encontraron coincidencias para el Target: {target1}")
         print(fits_path)
-        print(f'Hay coincidencia de {object_counter} objetos con el catálogo \n')
+        print(f'Hay coincidencia de {object_counter} objetos con el catálogo')
     """
     
     if object_counter == 0:
         return None
 
     # Se guardan las coordenadas de los objetos de catálogo que están en la imágen
-    Obj = open(f"Objectlist_{fits_name}.out", "r")
+    Obj = open(ruta_salida, "r")
     ListObj = Obj.readlines()
     Obj.close()
     Final_LO = []
@@ -162,12 +164,12 @@ def Photometry_Data_Table(fits_name, fits_path, catalogo, r, r_in, r_out, center
     np.set_printoptions(suppress=True, formatter={'float_kind':'{:f}'.format})
     """
     if object_counter !=0: 
-        print(f"\nSu catalogo reducido cuenta con {len(Final_List)} filas:\n ")
-        print("----RA---- ---DEC--- -----x-----  -----y----- -----ID-------\n")
+        print(f"Su catalogo reducido cuenta con {len(Final_List)} filas:")
+        print("----RA---- ---DEC--- -----x-----  -----y----- -----ID-------")
         print(Final_List[0], ID[0])
-        print("    ...       ...         ...          ...         ...        \n")
+        print("    ...       ...         ...          ...         ...        ")
         print(Final_List[len(Final_List)-1], ID[len(Final_List)-1])
-        print("---------- --------- ------------  ----------- -------------\n")
+        print("---------- --------- ------------  ----------- -------------")
 
     """
     _, _, x_init, y_init = zip(*Final_List)
@@ -239,7 +241,7 @@ for k in range(len(archivos)):
     photom = Photometry_Data_Table(fits_name, fits_path, catalogo, r=r, r_in=r_in, r_out=r_out, center_box_size=center_box_size)
     if photom is not None:
         all_tables.append(photom)
-print(f'\n \n Se obtuvieron {len(all_tables)} archivos .csv')
+print(f'Se obtuvieron {len(all_tables)} archivos .csv')
 
 # Crea lista con los nombres de los objetos a los cuales se enfoca el telescopio
 focus_object = []             
@@ -302,33 +304,3 @@ for foc in filtro_final.keys():
         counter += 1
     
     final_obs_table.write(f'{final_dir}DATAOUT_{foc}.csv', overwrite=True)    
-
-
-
-def move_fits_out():
-    """
-    Mueve todos los archivos .fits.out al directorio "fits_out".
-    Usamos os.walk para buscar los archivos y shutil.move para moverlos.
-    """
-    dest_dir_out = "./fits_out"
-    dest_dir_csv = "./csv_out"
-
-    for root, dirs, files in os.walk("./"):
-        for file in files:
-            if file.endswith(".fits.out"):
-                file_path = os.path.join(root, file)
-                try:
-                    shutil.move(file_path, os.path.join(dest_dir_out, file))
-                except Exception as e:
-                    print(f"Error al mover el archivo {file}: {e}")
-            os.makedirs("csv_out", exist_ok=True)
-            if file.endswith(".csv") and file.startswith("DATAOUT"):
-                file_path = os.path.join(root, file)
-                try:
-                    shutil.move(file_path, os.path.join(dest_dir_csv, file))
-                except Exception as e:
-                    print(f"Error al mover el archivo {file}: {e}")
-    print("Archivos .out almacenados en fits_out")
-    print("Archivos .csv almacenados en csv_out")
-
-move_fits_out()
