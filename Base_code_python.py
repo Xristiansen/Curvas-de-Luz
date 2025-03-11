@@ -28,19 +28,14 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from astropy.timeseries import LombScargle
-
-
-# In[333]:
-
+import math
+import time
+from rich.console import Console
 
 #Creación de directorios
 os.makedirs("./objt_out", exist_ok=True)
 os.makedirs("./csv_out", exist_ok=True)
 os.makedirs("./imagenes", exist_ok=True)
-
-
-# In[334]:
-
 
 #Se define la función que obtiene la info de Simbad
 Gaia.ROW_LIMIT = -1 
@@ -111,43 +106,35 @@ def obtener_catalogo():
     data.to_csv(f'catalogo_gaiadr2.csv',index = False, header=False,sep=" ")
     rows, columns = data.shape
     
-
-
-# In[335]:
-
-
 def Definir_sector():
     print(f"Para el objeto {object_name} se tienen los sectores:")
-    sectors = Tesscut.get_sectors(objectname=object_name)
-    print(f"\n{sectors}\n")
-    global sector_seleccionado
-    sector_seleccionado = input("Ingrese el sector a analizar:")
-    catalogo_sector= f"tesscurl_sector_{sector_seleccionado}_ffic.sh"
-    
-    if catalogo_sector in os.listdir("."):
-        print(f"✅ Archivo .sh del sector listo")
-    else:
-        print(f"El Archivo .sh del sector {sector_seleccionado} no se encuentra en la carpeta {os.path.basename(os.getcwd())}")
-        url = f"https://archive.stsci.edu/missions/tess/download_scripts/sector/tesscurl_sector_{sector_seleccionado}_ffic.sh"
-        print(f"Se procede a descargarlo...")
-        carpeta_destino = os.getcwd() 
-        nombre_archivo = f"tesscurl_sector_{sector_seleccionado}_ffic.sh"
-        ruta_completa = os.path.join(carpeta_destino, nombre_archivo)
-        response = requests.get(url)
-        
-        if response.status_code == 200:
-            with open(ruta_completa, "wb") as file:
-                file.write(response.content)
-            print(f"✅ Archivo descargado en: {ruta_completa}")
-        else:
-            print(f"❌ Error")
-    with open(f"tesscurl_sector_{sector_seleccionado}_ffic.sh", "rb") as archivo:  # Modo binario para mayor velocidad
-        print(f"Es posible descargar {sum(1 for _ in archivo)} imágenes del sector {sector_seleccionado}")
+    while True:
+        try:
+            sectors = Tesscut.get_sectors(objectname=object_name)
+            print(f"\n{sectors}\n")
+            global sector_seleccionado
+            sector_seleccionado = input("Ingrese el sector a analizar:")
+            catalogo_sector= f"tesscurl_sector_{sector_seleccionado}_ffic.sh"
+            if catalogo_sector in os.listdir("."):
+                print(f"✅ Archivo .sh del sector listo")
+                
+            while catalogo_sector not in os.listdir("."):
+                url = f"https://archive.stsci.edu/missions/tess/download_scripts/sector/{catalogo_sector}"
+                response = requests.get(url, timeout=10)
 
+                if response.status_code == 200:
+                    with open(catalogo_sector, "wb") as file:
+                        file.write(response.content)
+                        print(f"✅ Archivo descargado en: {ruta_completa}")
+                    break
+                time.sleep(2)
 
-# In[336]:
+            with open(catalogo_sector, "rb") as archivo:
+                print(f"Es posible descargar {sum(1 for _ in archivo)} imágenes del sector {sector_seleccionado}")
+            break
 
-
+        except requests.exceptions.RequestException:
+            time.sleep(2)
 #Comprobación del directorio de Trabajo, de fallar regersar a la carpeta principal
 dest_dir ="./imagenes"
 current_dir = os.getcwd()
@@ -156,91 +143,62 @@ if f'./{current_folder}' == dest_dir:
     print(f"Estás dentro de {current_folder}. Saliendo...")
     os.chdir("..") 
 
-def verificar_archivo(archivo_fits, tamaño_esperado=17775360):
-    """Devuelve True si el archivo existe y tiene el tamaño esperado, False si está corrupto o incompleto."""
-    return os.path.exists(archivo_fits) and os.path.getsize(archivo_fits) >= tamaño_esperado
+#Ahora si, el loop principal
+console = Console()
 
-def descargar_imagen(linea, progress, task):
-    """Descarga la imagen y actualiza la barra de progreso."""
-    nombre_archivo = linea.split("/")[-1] if "http" in linea else None
-    ruta_destino = os.path.join("./imagenes", nombre_archivo) if nombre_archivo else None
-
-    proceso = subprocess.run(f"{linea} -o {ruta_destino}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="./imagenes")
-
-    progress.update(task, advance=1)  # ✅ La barra avanza en cada intento de descarga
-
-    if verificar_archivo(ruta_destino):
-        return None  # Descarga exitosa
-    else:
-        return nombre_archivo  # Devuelve el nombre si falló
-
-def ejecutar_curl_desde_archivo(archivo_sh, linea_inicio, linea_final):
-    """Ejecuta descargas en paralelo con barra de progreso y devuelve solo archivos que fallaron."""
-    with open(archivo_sh, "r") as archivo:
-        lineas = [linea.strip() for i, linea in enumerate(archivo) if linea_inicio <= i < linea_final]  # 🔹 `-1` se maneja con `<`
-
-    max_workers = min(10, os.cpu_count())  # Limita las descargas simultáneas
-
-    with Progress(
-        TextColumn(f"[bold cyan][{linea_inicio} a {linea_final}]⏳Descargando..."),
-        BarColumn(bar_width=25, style="white", complete_style="bright_cyan", finished_style="bright_cyan"),
-        TextColumn("[bold cyan]{task.percentage:>3.0f}%"),
-        TimeRemainingColumn(),
-    ) as progress:
-        task = progress.add_task("", total=len(lineas))  # ✅ Asegurar que total es correcto
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            errores = list(filter(None, executor.map(lambda l: descargar_imagen(l, progress, task), lineas)))
-    clear_output(wait=True)
-    return errores  # Devuelve solo los archivos que fallaron
-
-            
-
-
-# In[337]:
-
-
-#Se define la función principal, esta descarga imágenes y las analiza con phot3.py
-def Descarga_y_analizis():
+def procesar_imagenes():
+    """Descarga y analiza imágenes en ciclos manteniendo la paralelización."""
     cargar_checkpoint()
     inicio = int(input("Imagen de inicio"))
     porciclo =  int(input("Imagenes por ciclo"))
     ciclos = int(input(f"Cuantos ciclos de {porciclo} imagenes"))
-    print(f"\nSe descargaran {porciclo} imagenes por ciclo, se necesitan ~{(porciclo)*34}mb cada vez")
-    switch= input("continuar? [y/n]")
-    if switch=="y":
+    if input(f"Se descargarán {porciclo} imágenes por ciclo (~{porciclo * 34}MB cada vez). \nContinuar? [y/n]: ") != "y":
+        console.print("❌ Cancelado", style="bold red")
+        return
+        
+    max_workers = min(10, os.cpu_count())
+    dest_dir = "./imagenes"
+    
+    # Configuración de la barra de progreso global
+    with Progress(
+        TextColumn("[bold cyan]{task.description}"),
+        BarColumn(bar_width=20, style="white", complete_style="bright_cyan"),
+        TextColumn("[bold cyan]{task.percentage:>3.0f}%"),
+        TimeRemainingColumn()
+    ) as progress:
         for i in range(ciclos):
-            dest_dir ="./imagenes"
-            current_dir = os.getcwd()
-            current_folder = os.path.basename(current_dir)
-            if f'./{current_folder}' == dest_dir:
-                print(f"Estás dentro de {current_folder}. Saliendo...")
-                os.chdir("..") 
+            os.makedirs(dest_dir, exist_ok=True)
+            if os.path.basename(os.getcwd()) == os.path.basename(dest_dir):
+                os.chdir("..")
             
-            ejecutar_curl_desde_archivo(f"tesscurl_sector_{sector_seleccionado}_ffic.sh",inicio+i*porciclo, inicio+porciclo+porciclo*i)
-            print(f"✅Descarga de las imagenes {inicio+i*porciclo} a la {inicio+porciclo+porciclo*i} Finalizada.")
-            print(f"Se ha descargado en total {(i+1)*porciclo} de {porciclo*ciclos} seleccionadas\n")
-            print("⏳Analizando las imagenes...")
+            inicio_ciclo = inicio + i * porciclo
+            fin_ciclo = inicio_ciclo + porciclo
             
-            result = subprocess.run("python phot4.py", shell=True, capture_output=True, text=True)
-            import re
-            print(re.sub(r'\n+', '\n', result.stdout).strip())  # Reduce espacios en blanco
+            with open(f"tesscurl_sector_{sector_seleccionado}_ffic.sh", "r") as archivo:
+                lineas = [linea.strip() for idx, linea in enumerate(archivo) if inicio_ciclo <= idx < fin_ciclo]
             
-            print(result.stderr)
+            # Agregar una nueva tarea para este ciclo
+            task = progress.add_task(
+                f"[white][{inicio_ciclo}-{fin_ciclo-1}] ⏳ Descargando...", 
+                total=len(lineas),
+                bar_style="bright_cyan"  # Asegurar que inicie en cyan
+            )
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                def descargar(linea):
+                    nombre = os.path.join(dest_dir, os.path.basename(linea)) if "http" in linea else None
+                    subprocess.run(f"{linea} -o {nombre}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,cwd="./imagenes")
+                    progress.update(task, advance=1)
+                list(executor.map(descargar, lineas))
+           
+            progress.update(task, description=f"[white][{inicio_ciclo}-{fin_ciclo-1}] 🟡 Analizando...",bar_style="bright_cyan")
+            subprocess.run("python phot4.py", shell=True, capture_output=True, text=True)
+            shutil.rmtree(dest_dir)
+            os.makedirs(dest_dir, exist_ok=True)
             
-            shutil.rmtree("./imagenes")
-            os.makedirs("./imagenes", exist_ok=True)
-            print("\n✅Imagenes borradas de la carpeta imagenes, proceso finalizado ")
-            guardar_checkpoint(inicio+porciclo*ciclos)
-            clear_output(wait=True)
-            
-    else:
-        print(f"❌ Cancelado")
-
-
-# In[338]:
-
-
+            # Marcar la tarea como completada
+            progress.update(task, description=f"[bold cyan][{inicio_ciclo}-{fin_ciclo-1}] [cyan]✅ Done")
+            progress.refresh()
+    guardar_checkpoint(inicio+porciclo*ciclos)
 #Esto lo que hace es analizar los datos csv, y construir las dos listas con los datos a graficar
 def conteo_datos():
     gaia_ids()
@@ -267,11 +225,6 @@ def conteo_datos():
     print(f"Datos agregados correctamente, actualmente se cuenta con {len(magnitudes)} datos")
     os.chdir("..")
 
-
-# In[339]:
-
-
-#La gráfica no habria que mover nada aquí
 def curvadeluz(color):
     global tiempo
     global magnitud
@@ -333,12 +286,6 @@ def curvadeluz(color):
         plt.ylabel("Flujo [e-/s]",fontsize=12,labelpad=5) 
         plt.title(f"Curva de luz para {object_name}".upper(), fontsize=10,pad=10)
         
-
-
-# In[340]:
-
-
-import math
 def redondear_con_incertidumbre(valor, incertidumbre):
     orden_magnitud = math.floor(math.log10(abs(incertidumbre))) 
     factor = 10 ** orden_magnitud
@@ -429,34 +376,12 @@ def periodograma(color):
     
 
 
-# In[341]:
-
-
 #Obtención del Catálogo
 object_name = input("Ingresa el nombre del objeto: ")
 radius_arcmin = float(input("Ingresa el radio de búsqueda en arcominutos: "))
 
-
-# In[342]:
-
-
 obtener_catalogo()
-
-
-# In[343]:
-
-
-os.getcwd()
-
-
-# In[349]:
-
-
 Definir_sector()
-
-
-# In[351]:
-
 
 import pickle
 
@@ -475,40 +400,11 @@ def cargar_checkpoint(archivo="checkpoint.pkl"):
         print("⚠️ No hay checkpoint guardado.")
         return None 
 
-
-# In[355]:
-
-
-Descarga_y_analizis()
-
-
-# In[357]:
-
-
+procesar_imagenes()
 conteo_datos()
-
-
-# In[358]:
-
-
 curvadeluz("light")
-
-
-# In[359]:
-
-
 periodograma("light")
 
-
-# In[365]:
-
-
-import nbconvert
-
-nbconvert.export(nbconvert.PythonExporter, "Base_code.ipynb", output_filename="Base_code_python.py")
-
-
-# In[ ]:
 
 
 
